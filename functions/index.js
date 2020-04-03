@@ -7,9 +7,9 @@ const config = require("./config.json");
 admin.initializeApp();
 
 exports.bitbucket = functions.https.onRequest((req, res) => {
-    console.log('Body: ', req.body);
     let actor = req.body.actor;
     let eventType = req.header("X-Event-Key");
+    console.log('Body of ' + eventType + ': ', req.body);
     if (eventType.startsWith("pullrequest:")) {
         onPullRequestEvent(eventType, actor, req, res);
     } else if (eventType.startsWith("repo:")) {
@@ -23,6 +23,9 @@ function onRepoEvent(eventType, actor, req, res) {
     switch (eventType) {
         case 'repo:push':
             repoPush(actor, req, res);
+            break;
+        case 'repo:commit_comment_created':
+            repoCommitCommentCreated(actor, req, res);
             break;
         default:
             res.send("Ignored");
@@ -70,90 +73,114 @@ async function repoPush(actor, req, res){
     for (let change of req.body.push.changes) {
         console.log(change);
         for (let commit of change.commits) {
-            message += '_' + actor.display_name.trim() + '_ has Commit to repository <' + repository.links.html.href + '|' + repository.name + '>: <' + commit.links.html.href + '|' + commit.hash + '> ' + commit.message + '\n';
+            message += '_' + actor.display_name.trim() + '_ has <' + commit.links.html.href + '|commited>: ' + commit.message;
         }
         if (change.truncated) {
-            message += '_' + actor.display_name.trim() + '_ has Commit to repository <' + repository.links.html.href + '|' + repository.name + '>: more commits...\n';
+            message += '_' + actor.display_name.trim() + '_ has commited more things...\n';
         }
     }
-    await pushToGoogleChatThread(message, await threadIdOf("REPO_"+req.body.repository.uuid)).then(threadId => saveThreadId("REPO_"+req.body.repository.uuid, threadId));
+    await pushToGoogleChatThread(message, await getRepoThreadIdOrCreated(repository));
+    return res.send('OK');
+}
+
+async function repoCommitCommentCreated(actor, req, res){
+    let repository = req.body.repository;
+    let commentText = req.body.comment.content.raw;
+    let message = '_' + actor.display_name.trim() + '_ has <' + req.body.comment.links.html.href + '|commented> about <' + commit.links.html.href + '|a commit>: ' + commentText;
+    await pushToGoogleChatThread(message, await getRepoThreadIdOrCreated(repository));
     return res.send('OK');
 }
 
 async function prCreated(pullRequest, actor, req, res){
-    let repository = req.body.repository;
-    let message = 'NEW Pull Request <users/all>\n' +
-        'Title :     ' + pullRequest.title.trim() + '\n' +
-        'Repository : <' + repository.links.html.href + '|' + repository.name + '>\n' +
-        'Branch : ' + pullRequest.source.branch.name.trim() + '   >   ' + pullRequest.destination.branch.name.trim() + '\n' +
-        'Author : _' + actor.display_name.trim() + '_\n' +
-        'Link :     <' + pullRequest.links.html.href + '|' + pullRequest.links.html.href + '>';
-    await pushToGoogleChatThread(message).then(threadId => saveThreadId(threadRefOfPr(pullRequest), threadId));
+    await getPrThreadIdOrCreated(pullRequest, req);
     return res.send('OK');
 }
 
 async function prUpdated(pullRequest, actor, req, res){
-    let message = '_' + actor.display_name.trim() + '_ has Updated.';
-    await pushToGoogleChatThread(message, await threadIdOfPr(pullRequest));
+    let message = '_' + actor.display_name.trim() + '_ has updated this PR.';
+    await pushToGoogleChatThread(message, await getPrThreadIdOrCreated(pullRequest, req));
     return res.send('OK');
 }
 
 async function prApproved(pullRequest, actor, req, res){
-    let message = '_' + actor.display_name.trim() + '_ has Approved.';
-    await pushToGoogleChatThread(message, await threadIdOfPr(pullRequest));
+    let message = '_' + actor.display_name.trim() + '_ has approved this PR.';
+    await pushToGoogleChatThread(message, await getPrThreadIdOrCreated(pullRequest, req));
     return res.send('OK');
 }
 
 async function prUnapproved(pullRequest, actor, req, res){
-    let message = '_' + actor.display_name.trim() + '_ has Unapproved.';
-    await pushToGoogleChatThread(message, await threadIdOfPr(pullRequest));
+    let message = '_' + actor.display_name.trim() + '_ has unapproved this PR.';
+    await pushToGoogleChatThread(message, await getPrThreadIdOrCreated(pullRequest, req));
     return res.send('OK');
 }
 
 async function prMerged(pullRequest, actor, req, res){
-    let message = '_' + actor.display_name.trim() + '_ has Merged.';
-    await pushToGoogleChatThread(message, await threadIdOfPr(pullRequest));
+    let message = '_' + actor.display_name.trim() + '_ has merged this PR.';
+    await pushToGoogleChatThread(message, await getPrThreadIdOrCreated(pullRequest, req));
     return res.send('OK');
 }
 
 async function prRejected(pullRequest, actor, req, res){
-    let message = '_' + actor.display_name.trim() + '_ has Rejected.';
-    await pushToGoogleChatThread(message, await threadIdOfPr(pullRequest));
+    let message = '_' + actor.display_name.trim() + '_ has rejected this PR.';
+    await pushToGoogleChatThread(message, await getPrThreadIdOrCreated(pullRequest, req));
     return res.send('OK');
 }
 
 async function prCommentCreated(pullRequest, actor, req, res){
     let commentText = req.body.comment.content.raw;
-    let message = '_' + actor.display_name.trim() + '_ has Created <' + req.body.comment.links.html.href + '|a comment>: ' + commentText;
-    await pushToGoogleChatThread(message, await threadIdOfPr(pullRequest));
+    let message = '_' + actor.display_name.trim() + '_ has <' + req.body.comment.links.html.href + '|commented>: ' + commentText;
+    console.log("prCommentCreated.message", message);
+    await pushToGoogleChatThread(message, await getPrThreadIdOrCreated(pullRequest, req));
     return res.send('OK');
 }
 
 async function prCommentUpdated(pullRequest, actor, req, res){
     let commentText = req.body.comment.content.raw;
-    let message = '_' + actor.display_name.trim() + '_ has Updated <' + req.body.comment.links.html.href + '|a comment>: ' + commentText;
-    await pushToGoogleChatThread(message, await threadIdOfPr(pullRequest));
+    let message = '_' + actor.display_name.trim() + '_ has updated <' + req.body.comment.links.html.href + '|a comment>: ' + commentText;
+    await pushToGoogleChatThread(message, await getPrThreadIdOrCreated(pullRequest, req));
     return res.send('OK');
 }
 
 async function prCommentDeleted(pullRequest, actor, req, res){
-    let commentText = req.body.comment.content.raw;
-    let message = '_' + actor.display_name.trim() + '_ has Deleted <' + req.body.comment.links.html.href + '|a comment>: ' + commentText;
-    await pushToGoogleChatThread(message, await threadIdOfPr(pullRequest));
+    let message = '_' + actor.display_name.trim() + '_ has deleted <' + req.body.comment.links.html.href + '|a comment>';
+    await pushToGoogleChatThread(message, await getPrThreadIdOrCreated(pullRequest, req));
     return res.send('OK');
 }
 
-function threadRefOfPr(pullRequest){
-    return 'PR_' + pullRequest.links.html.href.split("/bitbucket.org/")[1];
+
+
+async function getRepoThreadIdOrCreated(repository) {
+    let threadRef = "REPOSITORY_"+repository.uuid;
+    let threadId = await threadIdOf(threadRef);
+    if (!threadId) {
+        let message = 'Changes on Repository <' + repository.links.html.href + '|' + repository.name + '>\n' +
+            'Name :     ' + repository.full_name + '\n' +
+            'Link :     <' + repository.links.html.href + '|' + repository.links.html.href + '>';
+        threadId = await pushToGoogleChatThread(message).then(threadId => saveThreadId(threadRef, threadId));
+    }
+    return threadId;
 }
 
-async function threadIdOfPr(pullRequest) {
-    return threadIdOf(threadRefOfPr(pullRequest));
+async function getPrThreadIdOrCreated(pullRequest, req) {
+    let threadRef = 'PR_' + pullRequest.links.html.href.split("/bitbucket.org/")[1];
+    let threadId = await threadIdOf(threadRef);
+    if (!threadId) {
+        let repository = req.body.repository;
+        let message = '<users/all> New Pull Request\n' +
+            'Title :     ' + pullRequest.title.trim() + '\n' +
+            'Repository : <' + repository.links.html.href + '|' + repository.name + '>\n' +
+            'Branch : ' + pullRequest.source.branch.name.trim() + '   >   ' + pullRequest.destination.branch.name.trim() + '\n' +
+            'Author : _' + pullRequest.author.display_name.trim() + '_\n' +
+            'Link :     <' + pullRequest.links.html.href + '|' + pullRequest.links.html.href + '>';
+        threadId = await pushToGoogleChatThread(message).then(threadId => saveThreadId(threadRef, threadId));
+    }
+    return threadId;
 }
 
 async function threadIdOf(threadRef) {
     return admin.database().ref('chatThread').child(threadRef).child('threadId')
-        .once('value', (snapshot) => snapshot.val());
+        .once('value')
+        .then((snapshot) => snapshot.val());
 }
 
 async function saveThreadId(threadRef, threadId) {
