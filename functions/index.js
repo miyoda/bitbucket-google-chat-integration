@@ -6,16 +6,6 @@ const config = require("./config.json");
 
 admin.initializeApp();
 
-async function pushToGoogleChatThread(message, thread = null) {
-    let googleRes = await axios.post(config.googleChatEndpoint, {
-        text: message,
-        thread: {
-            name: thread
-        }
-    }).catch((e)=>{console.log(e)});
-    return googleRes.data.thread.name;
-}
-
 exports.bitbucket = functions.https.onRequest((req, res) => {
     console.log('Body: ', req.body);
     let actor = req.body.actor;
@@ -75,14 +65,26 @@ function onPullRequestEvent(eventType, actor, req, res) {
 }
 
 async function repoPush(actor, req, res){
-    let message = '_' + actor + '_ has Pushed to repository.';
+    let repository = req.body.repository;
+    let message = '';
+    for (let change of req.body.push.changes) {
+        console.log(change);
+        for (let commit of change.commits) {
+            message += '_' + actor.display_name.trim() + '_ has Commit to repository <' + repository.links.html.href + '|' + repository.name + '>: <' + commit.links.html.href + '|' + commit.hash + '> ' + commit.message + '\n';
+        }
+        if (change.truncated) {
+            message += '_' + actor.display_name.trim() + '_ has Commit to repository <' + repository.links.html.href + '|' + repository.name + '>: more commits...\n';
+        }
+    }
     await pushToGoogleChatThread(message, await threadIdOf("REPO_"+req.body.repository.uuid)).then(threadId => saveThreadId("REPO_"+req.body.repository.uuid, threadId));
     return res.send('OK');
 }
 
 async function prCreated(pullRequest, actor, req, res){
-    let message = '<users/all>\n' +
+    let repository = req.body.repository;
+    let message = 'NEW Pull Request <users/all>\n' +
         'Title :     ' + pullRequest.title.trim() + '\n' +
+        'Repository : <' + repository.links.html.href + '|' + repository.name + '>\n' +
         'Branch : ' + pullRequest.source.branch.name.trim() + '   >   ' + pullRequest.destination.branch.name.trim() + '\n' +
         'Author : _' + actor.display_name.trim() + '_\n' +
         'Link :     <' + pullRequest.links.html.href + '|' + pullRequest.links.html.href + '>';
@@ -158,4 +160,14 @@ async function saveThreadId(threadRef, threadId) {
     return await admin.database().ref('chatThread').child(threadRef).set({
         threadId: threadId.toString()
     });
+}
+
+async function pushToGoogleChatThread(message, thread = null) {
+    let googleRes = await axios.post(config.googleChatEndpoint, {
+        text: message,
+        thread: {
+            name: thread
+        }
+    }).catch((e)=>{console.log(e)});
+    return googleRes.data.thread.name;
 }
