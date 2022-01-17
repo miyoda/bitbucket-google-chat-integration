@@ -104,7 +104,7 @@ async function prCreated(pullRequest, actor, req, res){
 }
 
 async function prUpdated(pullRequest, actor, req, res){
-    let message = "_" + actor.display_name.trim() + "_ has updated <" + req.body.comment.links.html.href + "|this PR>.";
+    let message = "_" + actor.display_name.trim() + "_ has updated <" + req.body.pullrequest.links.html.href + "|this PR>.";
     await pushToGoogleChatThread(message, await getPrThreadIdOrCreated(pullRequest, req));
     return res.send("OK");
 }
@@ -199,6 +199,9 @@ async function threadIdOf(threadRef) {
 // }
 
 async function pushToGoogleChatThread(message, thread = null) {
+    let separator = "\n++++++++++++++++++++++++++++++++++++++++++++\n";
+    message = separator.concat(message);
+    message = message.concat(separator);
     let googleRes = await axios.post(config.googleChatEndpoint, {
         text: message,
         thread: {
