@@ -1,3 +1,5 @@
 {
-  "googleChatEndpoint": "https://chat.googleapis.com/v1/spaces/XXXXXXXX/messages?key=YYYYYYYY"
+  "googleChatEndpoint": "https://chat.googleapis.com/v1/spaces/XXXXXXXX/messages?key=YYYYYYYY",
+  "firebase_realtime_database_url": "https://realtime-database-url.firebaseio.com/",
+  "firebaseServiceAccountFile": "./firebase-service-account-privatekey.json"
 }

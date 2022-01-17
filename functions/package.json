@@ -1,7 +1,7 @@
 {
   "name": "bitbucket-google-chat-integration-functions",
   "engines": {
-    "node": "8"
+    "node": "10"
   },
   "scripts": {
     "lint": "eslint .",
