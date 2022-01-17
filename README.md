@@ -9,3 +9,14 @@ You should deploy a function for each destination group but can be used for more
 - Config your firebase project with "firebase init" selecting "Database" and "functions".
 - Deploy it with "firebase deploy"
 - Config a webhook in your BitBucket project using the deployed firebase function URL with all the event types enabled
+
+## Generate firebase Service Accounts private key
+
+- Go to the firebase console / Settings / Service accounts
+- Click on the option of [ Generate new private key ]
+- Add the file to functions directory with name "firebase-privatekey.json"
+
+## Get firebase database url
+- Go to the firebase console / Realtime Database / Create Database
+- Create database in locked state
+- Add the database url in the config file
